@@ -1,4 +1,4 @@
-type ScopeData = {
+export type ScopeData = {
   variables: Record<string, unknown>;
   childScope: ScopeData | null;
   parentScope: ScopeData | null;
@@ -13,6 +13,10 @@ const emptyScope = (parentScope?: ScopeData) => ({
 // TODO добавить поиск переменных из родительских скоупов
 class ScopeManager {
   data: ScopeData = emptyScope();
+
+  getCurrentScopeData() {
+    return this.data;
+  }
 
   enterScope() {
     if (this.data.childScope === null) {
