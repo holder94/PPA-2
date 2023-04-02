@@ -29,5 +29,3 @@ testManager(manager);
 
 console.log(manager.getVariableValue('a'))
 console.log(manager.getVariableValue('c'))
-
-console.dir(scopeManager.getState(), { depth: 3 })
