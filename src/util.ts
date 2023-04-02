@@ -194,12 +194,20 @@ const handleAssignmentExpression = (
       scopeManager.assignVariable(expr.left.name, result);
       return result;
     case '-=':
-      break;
+      const result1 = leftOperandValue - rightOperandValue;
+      scopeManager.assignVariable(expr.left.name, result1);
+      return result1;
     case '*=':
-      break;
+      const result2 = leftOperandValue * rightOperandValue;
+      scopeManager.assignVariable(expr.left.name, result2);
+      return result2;
     case '%=':
-      break;
+      const result3 = leftOperandValue % rightOperandValue;
+      scopeManager.assignVariable(expr.left.name, result3);
+      return result3;
     case '/=':
-      break;
+      const result4 = leftOperandValue / rightOperandValue;
+      scopeManager.assignVariable(expr.left.name, result4);
+      return result4;
   }
 };
