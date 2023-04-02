@@ -80,8 +80,21 @@ class ScopeManager {
     return result;
   }
 
+  setIsUsed(identifier: string) {
+    let currentScope: ScopeData | null = this.data;
+    while (currentScope) {
+      if (currentScope.variables.hasOwnProperty(identifier)) {
+        // set is used
+        return;
+      }
+      currentScope = currentScope.parentScope;
+    }
+
+    const error = `Identifier "${identifier}" is not in the scope`;
+    throw new Error(error);
+  }
+
   /**
-   * 
    * @returns копия всего скопа с указателем на последний
    */
   getSnaphot() {
@@ -89,7 +102,6 @@ class ScopeManager {
   }
 
   /**
-   * 
    * @param newScope - новый скоуп с указателем на последний
    */
   applySnapshot(newScope: ScopeData) {

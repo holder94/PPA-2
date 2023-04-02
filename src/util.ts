@@ -2,6 +2,8 @@ import {
   AssignmentExpression,
   BinaryExpression,
   BlockStatement,
+  CallExpression,
+  ConditionalExpression,
   Expression,
   ForStatement,
   IfStatement,
@@ -10,6 +12,7 @@ import {
   UpdateExpression,
   VariableDeclaration,
   WhileStatement,
+  isExpression,
 } from '@babel/types';
 import fs from 'fs';
 import path from 'path';
@@ -176,6 +179,10 @@ const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
       return handleAssignmentExpression(e, scopeManager);
     case 'UpdateExpression':
       return getUpdateExpressionValue(e, scopeManager);
+    case 'ConditionalExpression':
+      return getTernaryExpressionValue(e, scopeManager);
+    case 'CallExpression':
+      return getCallExpressionValue(e, scopeManager);
     case 'Identifier':
       return scopeManager.getVariableValue(e.name);
     default:
@@ -293,4 +300,34 @@ const getUpdateExpressionValue = (
   }
 
   return expr.prefix ? newValue : argumentValue;
+};
+
+const getCallExpressionValue = (
+  expr: CallExpression,
+  scopeManager: ScopeManager
+) => {
+  if (!isExpression(expr.callee)) {
+    throw new Error('CallExpression callee is not an expression');
+  }
+
+  getExpressionValue(expr.callee, scopeManager);
+
+  expr.arguments.forEach((arg) => {
+    if (!isExpression(arg)) {
+      throw new Error('CallExpression argument is not an expression!');
+    }
+
+    getExpressionValue(arg, scopeManager);
+  });
+
+  return undefined;
+};
+
+const getTernaryExpressionValue = (
+  expr: ConditionalExpression,
+  scopeManager: ScopeManager
+) => {
+  getExpressionValue(expr.test, scopeManager);
+  getExpressionValue(expr.consequent, scopeManager);
+  getExpressionValue(expr.alternate, scopeManager);
 };

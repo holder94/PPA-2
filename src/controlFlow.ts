@@ -1,3 +1,5 @@
+import { ScopeData } from "./scope";
+
 export type Flow = {
   variables: Record<string, any[]>;
   childFlow: Flow | null;
@@ -102,6 +104,10 @@ class ControlFlow {
 
     return result;
   }
+
+  // mergeScopes(...scopes: ScopeData[]): Flow {
+
+  // }
 }
 
 export default ControlFlow;
