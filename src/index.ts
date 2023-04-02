@@ -1,6 +1,7 @@
 import * as parser from '@babel/parser';
 import { getProgramText, traverseProgram } from './util';
 import ScopeManager from './scope';
+import ControlFlow from './controlFlow';
 
 const programText = getProgramText('first.js');
 const ast = parser.parse(programText);
@@ -9,8 +10,10 @@ for (const node of ast.program.body) {
   console.dir(node, { depth: 8 });
 }
 
-const scopeManager = new ScopeManager()
-traverseProgram(ast.program, scopeManager)
+const scopeManager = new ScopeManager();
+const controlFlow = new ControlFlow();
+
+traverseProgram(ast.program, scopeManager, controlFlow);
 
 const manager = new ScopeManager();
 function testManager(manager: ScopeManager) {
@@ -27,5 +30,16 @@ function testManager(manager: ScopeManager) {
 
 testManager(manager);
 
-console.log(manager.getVariableValue('a'))
-console.log(manager.getVariableValue('c'))
+console.log(manager.getVariableValue('a'));
+console.log(manager.getVariableValue('c'));
+
+const testControlFlow = new ControlFlow();
+testControlFlow.extendFlowState('a', 1);
+testControlFlow.createNewFlow();
+testControlFlow.extendFlowState('b', 1);
+testControlFlow.extendFlowState('a', 2);
+testControlFlow.extendFlowState('b', 1);
+console.dir(testControlFlow.getState(), { depth: 6 });
+testControlFlow.checkLastFlow();
+testControlFlow.exitFlow();
+console.dir(testControlFlow.getState(), { depth: 6 });

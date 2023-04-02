@@ -1,4 +1,7 @@
-type ScopeData = {
+import ControlFlow from './controlFlow';
+import cloneDeep from 'lodash/cloneDeep';
+
+export type ScopeData = {
   variables: Record<string, unknown>;
   childScope: ScopeData | null;
   parentScope: ScopeData | null;
@@ -23,8 +26,8 @@ class ScopeManager {
     }
 
     if (!this.data.variables.hasOwnProperty(name)) {
-      const error = `Cannot assign to variable ${name} since it doesn't exist`
-      throw new Error(error)
+      const error = `Cannot assign to variable ${name} since it doesn't exist`;
+      throw new Error(error);
     }
 
     this.data.variables[name] = value;
@@ -66,15 +69,31 @@ class ScopeManager {
   }
 
   getState() {
-    let currentScope: ScopeData | null = this.data
+    let currentScope: ScopeData | null = this.data;
     const result = [] as any[];
 
     while (currentScope) {
-      result.unshift({...currentScope.variables})
-      currentScope = currentScope.parentScope
+      result.unshift({ ...currentScope.variables });
+      currentScope = currentScope.parentScope;
     }
 
     return result;
+  }
+
+  /**
+   * 
+   * @returns копия всего скопа с указателем на последний
+   */
+  getSnaphot() {
+    return cloneDeep(this.data);
+  }
+
+  /**
+   * 
+   * @param newScope - новый скоуп с указателем на последний
+   */
+  applySnapshot(newScope: ScopeData) {
+    this.data = newScope;
   }
 }
 
