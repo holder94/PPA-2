@@ -19,31 +19,33 @@ class ScopeManager {
 
   assignVariable(name: string, value: any) {
     while (!this.data.variables.hasOwnProperty(name) && this.data.parentScope) {
-      this.data = this.data.parentScope
+      this.data = this.data.parentScope;
     }
 
-    this.data.variables[name] = value
+    if (!this.data.variables.hasOwnProperty(name)) {
+      const error = `Cannot assign to variable ${name} since it doesn't exist`
+      throw new Error(error)
+    }
 
-    while(this.data.childScope)
-      this.data = this.data.childScope
+    this.data.variables[name] = value;
+
+    while (this.data.childScope) this.data = this.data.childScope;
   }
 
   getVariableValue(variableName: string) {
-    while(!this.data.variables.hasOwnProperty(variableName)) {
+    while (!this.data.variables.hasOwnProperty(variableName)) {
       if (this.data.parentScope === null) {
-        const error = `no variable with name "${variableName}" was found`
-        throw new Error(error)
+        const error = `no variable with name "${variableName}" was found`;
+        throw new Error(error);
       }
 
-      this.data = this.data.parentScope
+      this.data = this.data.parentScope;
     }
 
-    const result = this.data.variables[variableName]
+    const result = this.data.variables[variableName];
+    while (this.data.childScope) this.data = this.data.childScope;
 
-    while(this.data.childScope)
-      this.data = this.data.childScope
-
-    return result
+    return result;
   }
 
   enterScope() {
@@ -60,7 +62,19 @@ class ScopeManager {
     }
 
     this.data = this.data.parentScope;
-    this.data.childScope = null
+    this.data.childScope = null;
+  }
+
+  getState() {
+    let currentScope: ScopeData | null = this.data
+    const result = [] as any[];
+
+    while (currentScope) {
+      result.unshift({...currentScope.variables})
+      currentScope = currentScope.parentScope
+    }
+
+    return result;
   }
 }
 

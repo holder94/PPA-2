@@ -27,6 +27,7 @@ function testManager(manager: ScopeManager) {
 
 testManager(manager);
 
-console.dir(manager.data, { depth: 6 });
 console.log(manager.getVariableValue('a'))
 console.log(manager.getVariableValue('c'))
+
+console.dir(scopeManager.getState(), { depth: 3 })
