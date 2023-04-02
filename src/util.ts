@@ -133,25 +133,25 @@ const getBinaryExpressionValue = (
     case '!=':
       return leftOperandValue != rightOperandValue;
     case '%':
-      break;
+      return leftOperandValue % rightOperandValue;
     case '+':
-      break;
+      return leftOperandValue + rightOperandValue;
     case '-':
-      break;
+      return leftOperandValue - rightOperandValue;
     case '*':
-      break;
+      return leftOperandValue * rightOperandValue;
     case '/':
-      break;
+      return leftOperandValue / rightOperandValue;
     case '==':
-      break;
+      return leftOperandValue == rightOperandValue;
     case '>':
-      break;
+      return leftOperandValue > rightOperandValue;
     case '>=':
-      break;
+      return leftOperandValue >= rightOperandValue;
     case '<':
-      break;
+      return leftOperandValue < rightOperandValue;
     case '<=':
-      break;
+      return leftOperandValue <= rightOperandValue;
   }
 };
 
