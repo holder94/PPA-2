@@ -1,29 +1,32 @@
 import * as parser from '@babel/parser';
-import { getProgramText } from './util';
+import { getProgramText, traverseProgram } from './util';
 import ScopeManager from './scope';
 
 const programText = getProgramText('first.js');
-const parseResult = parser.parse(programText);
+const ast = parser.parse(programText);
 
-for (const node of parseResult.program.body) {
-  console.dir(node, { depth: 6 });
+for (const node of ast.program.body) {
+  console.dir(node, { depth: 8 });
 }
 
-const scopeManager = new ScopeManager();
+const scopeManager = new ScopeManager()
+traverseProgram(ast.program, scopeManager)
+
+const manager = new ScopeManager();
 function testManager(manager: ScopeManager) {
-  manager.setVariable('a', 1);
+  manager.declareVariable('a', 1);
   manager.enterScope();
-  manager.setVariable('b', 2);
+  manager.declareVariable('b', 2);
   manager.enterScope();
-  manager.setVariable('c', 3);
-  manager.exitScope();
-  manager.setVariable('d', 4);
+  manager.declareVariable('c', 3);
+  manager.declareVariable('d', 4);
   manager.enterScope();
-  manager.setVariable('e', 5);
-  manager.exitScope();
-  manager.exitScope();
+  manager.declareVariable('e', 5);
+  manager.assignVariable('d', 10);
 }
 
-testManager(scopeManager);
+testManager(manager);
 
-console.dir(scopeManager.data, { depth: 6 });
+console.dir(manager.data, { depth: 6 });
+console.log(manager.getVariableValue('a'))
+console.log(manager.getVariableValue('c'))

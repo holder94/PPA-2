@@ -1,3 +1,5 @@
+// const arrowFunction = (arg) => arg ** 3
+
 function discount(price) {
   let d = 0.8
 

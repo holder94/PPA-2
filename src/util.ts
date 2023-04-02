@@ -1,11 +1,11 @@
 import {
+  AssignmentExpression,
+  BinaryExpression,
   BlockStatement,
   Expression,
-  ForXStatement,
   Program,
   Statement,
   VariableDeclaration,
-  variableDeclaration,
 } from '@babel/types';
 import fs from 'fs';
 import path from 'path';
@@ -26,16 +26,17 @@ export function traverseProgram(program: Program, scopeManager: ScopeManager) {
   }
 }
 
-const createTraverser = <T extends Statement = Statement>(
-  fn: (statement: T, scopeManager: ScopeManager) => void
-) => fn;
+type StatementTraverser<S extends Statement = Statement> = (
+  stmt: S,
+  scopeManager: ScopeManager
+) => void;
 
-const traverseStatement = createTraverser((statement, scopeManager) => {
+const traverseStatement: StatementTraverser = (statement, scopeManager) => {
   switch (statement.type) {
     case 'FunctionDeclaration':
       return;
     case 'VariableDeclaration':
-      return;
+      traverseVariableDeclaration(statement, scopeManager)
     case 'IfStatement':
       return;
     case 'BlockStatement':
@@ -43,37 +44,132 @@ const traverseStatement = createTraverser((statement, scopeManager) => {
       traverseBlockStatement(statement, scopeManager);
       scopeManager.exitScope();
       return;
+    case 'ExpressionStatement':
+      break;
   }
-});
+};
 
-const traverseBlockStatement = createTraverser<BlockStatement>(
-  (statement, scopeManager) => {
-    for (const node of statement.body) {
-      traverseStatement(node, scopeManager);
-    }
+const traverseBlockStatement: StatementTraverser<BlockStatement> = (
+  statement,
+  scopeManager
+) => {
+  for (const node of statement.body) {
+    traverseStatement(node, scopeManager);
   }
-);
+};
 
-const traverseVariableDeclaration = createTraverser<VariableDeclaration>(
-  (stmt, scopeManager) => {
-    for (const variableDeclarator of stmt.declarations) {
+const traverseVariableDeclaration: StatementTraverser<VariableDeclaration> = (
+  stmt,
+  scopeManager
+) => {
+  for (const variableDeclarator of stmt.declarations) {
+    if (variableDeclarator.id.type === 'Identifier') {
+      const variableName = variableDeclarator.id.name;
+      scopeManager.declareVariable(variableName, undefined);
       if (variableDeclarator.init) {
+        scopeManager.assignVariable(
+          variableName,
+          getExpressionValue(variableDeclarator.init, scopeManager)
+        );
       }
     }
   }
-);
+};
 
-const checkExpression = <E extends Expression>(e: E) => {
+const getExpressionValue = (e: Expression, scopeManager: ScopeManager): unknown => {
   switch (e.type) {
     case 'NumericLiteral':
-      break;
+      return e.value;
     case 'StringLiteral':
-      break;
+      return e.value;
     case 'BooleanLiteral':
-      break;
+      return e.value;
     case 'TemplateLiteral': // less priority
-      break;
+      return undefined;
     case 'NullLiteral':
+      return null;
+    case 'BinaryExpression':
+      return getBinaryExpressionValue(e, scopeManager)
+    case 'AssignmentExpression':
+      break;
+    case 'Identifier':
+      return scopeManager.getVariableValue(e.name)
+    default:
+      const error = `unknown expression type: ${e.type}`
+      throw new Error(error)
+  }
+};
+
+const getBinaryExpressionValue = (
+  expr: BinaryExpression,
+  scopeManager: ScopeManager
+) => {
+  if (expr.left.type === 'PrivateName') {
+    throw new Error('Type of left operand in binary expression in "PrivateName"')
+  }
+  const leftOperandValue = getExpressionValue(expr.left, scopeManager)
+  const rightOperandValue = getExpressionValue(expr.right, scopeManager)
+  switch (expr.operator) {
+    case '!=':
+      return leftOperandValue != rightOperandValue
+    case '%':
+      break;
+    case '+':
+      break;
+    case '-':
+      break;
+    case '*':
+      break;
+    case '/':
+      break;
+    case '==':
+      break;
+    case '>':
+      break;
+    case '>=':
+      break;
+    case '<':
+      break;
+    case '<=':
+      break;
+  }
+};
+
+enum AssignmentOperator {
+  '=',
+  '+=',
+  '-=',
+  '*=',
+  '/=',
+  '%=',
+  '**=',
+  '<<=',
+  '>>=',
+  '>>>=',
+  ',=',
+  '^=',
+  '&=',
+  '||=',
+  '&&=',
+  '??=',
+}
+
+const handleAssignmentExpression = (
+  expr: AssignmentExpression,
+  scopeManager: ScopeManager
+) => {
+  switch (expr.operator) {
+    case '=':
+      break;
+    case '+=':
+      break;
+    case '-=':
+      break;
+    case '*=':
+      break;
+    case '%=':
+      break;
+    case '/=':
       break;
   }
 };
