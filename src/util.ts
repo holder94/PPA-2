@@ -96,12 +96,12 @@ const traverseStatement: StatementTraverser = (statement, scopeManager) => {
       scopeManager.enterScope();
       traverseWhileStatement(statement, scopeManager);
       scopeManager.exitScope();
-      break
+      break;
     case 'DoWhileStatement':
       scopeManager.enterScope();
       traverseDoWhileStatement(statement, scopeManager);
       scopeManager.exitScope();
-      break
+      break;
     default:
       const error = `Unknown statement type: ${statement.type}`;
       throw new Error(error);
@@ -289,11 +289,17 @@ const handleExpressionValue = (
     case 'ArrayExpression':
       return handleArrayExpression(e, scopeManager, canBeUsed);
     case 'FunctionExpression':
-      return handleFunctionExpression(e, scopeManager);
+      scopeManager.enterScope();
+      handleFunctionExpression(e, scopeManager);
+      scopeManager.exitScope();
+      break;
     case 'ArrowFunctionExpression':
-      return handleArrowFunctionExpression(e, scopeManager, canBeUsed);
+      scopeManager.enterScope();
+      handleArrowFunctionExpression(e, scopeManager, canBeUsed);
+      scopeManager.exitScope();
+      break;
     case 'Identifier':
-      if (canBeUsed) scopeManager.setIsUsed(e.name);
+      scopeManager.setIsUsed(e.name, canBeUsed);
       return scopeManager.getVariableValue(e.name);
     default:
       const error = `unknown expression type: ${e.type}`;
@@ -360,33 +366,23 @@ const handleAssignmentExpression = (
     throw new Error(error);
   }
 
-  handleExpressionValue(expr.left, scopeManager, canBeUsed);
+  const identifierWasUsed = scopeManager.getVariableValue(expr.left.name);
   handleExpressionValue(expr.right, scopeManager, true);
+  if (!identifierWasUsed)
+    handleExpressionValue(expr.left, scopeManager, canBeUsed);
 
   switch (expr.operator) {
     case '=':
-      // scopeManager.assignVariable(expr.left.name);
       break;
     case '+=':
-      // const result = leftOperandValue + rightOperandValue;
-      // scopeManager.assignVariable(expr.left.name);
-      // return result;
       break;
     case '-=':
-      // const result1 = leftOperandValue - rightOperandValue;
-      // scopeManager.assignVariable(expr.left.name);
       break;
     case '*=':
-      // const result2 = leftOperandValue * rightOperandValue;
-      // scopeManager.assignVariable(expr.left.name);
       break;
     case '%=':
-      // const result3 = leftOperandValue % rightOperandValue;
-      // scopeManager.assignVariable(expr.left.name);
       break;
     case '/=':
-      // const result4 = leftOperandValue / rightOperandValue;
-      // scopeManager.assignVariable(expr.left.name);
       break;
   }
 };
@@ -470,6 +466,7 @@ const handleArrowFunctionExpression = (
   scopeManager: ScopeManager,
   canBeUsed: boolean
 ) => {
+  expr.params.forEach((param) => traverseFunctionParam(param, scopeManager));
   if (isExpression(expr.body)) {
     handleExpressionValue(expr.body, scopeManager, canBeUsed);
   } else {
@@ -481,5 +478,6 @@ const handleFunctionExpression = (
   expr: FunctionExpression,
   scopeManager: ScopeManager
 ) => {
+  expr.params.forEach((param) => traverseFunctionParam(param, scopeManager));
   traverseStatement(expr.body, scopeManager);
 };

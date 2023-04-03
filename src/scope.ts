@@ -26,21 +26,6 @@ class ScopeManager {
     }
   }
 
-  assignVariable(name: string) {
-    while (!this.data.variables.hasOwnProperty(name) && this.data.parentScope) {
-      this.data = this.data.parentScope;
-    }
-
-    if (!this.data.variables.hasOwnProperty(name)) {
-      const error = `Cannot assign to variable ${name} since it doesn't exist`;
-      throw new Error(error);
-    }
-
-    this.data.variables[name].isUsed = true;
-
-    while (this.data.childScope) this.data = this.data.childScope;
-  }
-
   getVariableValue(variableName: string) {
     while (!this.data.variables.hasOwnProperty(variableName)) {
       if (this.data.parentScope === null) {
@@ -86,11 +71,11 @@ class ScopeManager {
     return result;
   }
 
-  setIsUsed(identifier: string) {
+  setIsUsed(identifier: string, usedValue = true) {
     let currentScope: ScopeData | null = this.data;
     while (currentScope) {
       if (currentScope.variables.hasOwnProperty(identifier)) {
-        currentScope.variables[identifier].isUsed = true
+        currentScope.variables[identifier].isUsed = usedValue
         return;
       }
       currentScope = currentScope.parentScope;
@@ -103,7 +88,7 @@ class ScopeManager {
   checkLastScope() {
     Object.entries(this.data.variables).forEach(([identifier, {isUsed, lineNumber}]) => {
       if (!isUsed) {
-        const info = (lineNumber ? `Line ${lineNumber}: ` : '') + `variable "${identifier}" is defined but is not used in any expression`
+        const info = (lineNumber ? `Line ${lineNumber}: ` : '') + `variable "${identifier}" has a value but is not used in any expression`
         console.log(info)
       }
     })
