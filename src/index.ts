@@ -4,7 +4,9 @@ import ScopeManager from './scope';
 import ControlFlow from './controlFlow';
 
 const programText = getProgramText('first.js');
-const ast = parser.parse(programText);
+const ast = parser.parse(programText, {
+  createParenthesizedExpressions: true,
+});
 
 for (const node of ast.program.body) {
   console.dir(node, { depth: 8 });
@@ -13,7 +15,7 @@ for (const node of ast.program.body) {
 const scopeManager = new ScopeManager();
 const controlFlow = new ControlFlow();
 
-traverseProgram(ast.program, scopeManager, controlFlow);
+traverseProgram(ast.program, scopeManager);
 
 const manager = new ScopeManager();
 function testManager(manager: ScopeManager) {

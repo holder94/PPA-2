@@ -1,4 +1,6 @@
 import {
+  ArrayExpression,
+  ArrowFunctionExpression,
   AssignmentExpression,
   BinaryExpression,
   BlockStatement,
@@ -6,19 +8,31 @@ import {
   ConditionalExpression,
   Expression,
   ForStatement,
+  FunctionDeclaration,
+  FunctionExpression,
+  Identifier,
   IfStatement,
+  LogicalExpression,
+  Pattern,
   Program,
+  RestElement,
+  ReturnStatement,
+  SequenceExpression,
   Statement,
   UpdateExpression,
   VariableDeclaration,
   WhileStatement,
+  isArrayPattern,
+  isAssignmentPattern,
   isExpression,
+  isIdentifier,
+  isObjectPattern,
+  isRestElement,
 } from '@babel/types';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ScopeManager from './scope';
-import ControlFlow from './controlFlow';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,52 +42,43 @@ export function getProgramText(fileName: string) {
   return fs.readFileSync(filePath, 'utf-8').toString();
 }
 
-export function traverseProgram(
-  program: Program,
-  scopeManager: ScopeManager,
-  controlFlow: ControlFlow
-) {
+export function traverseProgram(program: Program, scopeManager: ScopeManager) {
   for (const statement of program.body) {
-    traverseStatement(statement, scopeManager, controlFlow);
+    traverseStatement(statement, scopeManager);
   }
 }
 
 type StatementTraverser<S extends Statement = Statement> = (
   stmt: S,
-  scopeManager: ScopeManager,
-  controlFlow: ControlFlow
+  scopeManager: ScopeManager
 ) => void;
 
-const traverseStatement: StatementTraverser = (
-  statement,
-  scopeManager,
-  controlFlow
-) => {
+const traverseStatement: StatementTraverser = (statement, scopeManager) => {
   switch (statement.type) {
     case 'FunctionDeclaration':
       scopeManager.enterScope();
-      traverseBlockStatement(statement.body, scopeManager, controlFlow);
+      traverseFunctionDeclaration(statement, scopeManager);
       scopeManager.exitScope();
       break;
     case 'VariableDeclaration':
-      traverseVariableDeclaration(statement, scopeManager, controlFlow);
+      traverseVariableDeclaration(statement, scopeManager);
       break;
     case 'IfStatement':
       return;
     case 'BlockStatement':
       scopeManager.enterScope();
-      controlFlow.createNewFlow();
-      traverseBlockStatement(statement, scopeManager, controlFlow);
-      controlFlow.checkLastFlow();
-      controlFlow.exitFlow();
+      traverseBlockStatement(statement, scopeManager);
       scopeManager.exitScope();
       break;
     case 'ExpressionStatement':
       getExpressionValue(statement.expression, scopeManager);
       break;
+    case 'ReturnStatement':
+      traverseReturnStatement(statement, scopeManager);
+      break;
     case 'ForStatement':
       scopeManager.enterScope();
-      traverseForStatement(statement, scopeManager, controlFlow);
+      traverseForStatement(statement, scopeManager);
       scopeManager.exitScope();
       break;
     default:
@@ -82,20 +87,26 @@ const traverseStatement: StatementTraverser = (
   }
 };
 
+const traverseFunctionDeclaration: StatementTraverser<FunctionDeclaration> = (
+  stmt,
+  scopeManager
+) => {
+  traverseBlockStatement(stmt.body, scopeManager);
+  stmt.params.forEach((param) => traverseFunctionParam(param, scopeManager));
+};
+
 const traverseBlockStatement: StatementTraverser<BlockStatement> = (
   statement,
-  scopeManager,
-  controlFlow
+  scopeManager
 ) => {
   for (const node of statement.body) {
-    traverseStatement(node, scopeManager, controlFlow);
+    traverseStatement(node, scopeManager);
   }
 };
 
 const traverseVariableDeclaration: StatementTraverser<VariableDeclaration> = (
   stmt,
-  scopeManager,
-  controlFlow
+  scopeManager
 ) => {
   for (const variableDeclarator of stmt.declarations) {
     if (variableDeclarator.id.type !== 'Identifier') {
@@ -112,34 +123,71 @@ const traverseVariableDeclaration: StatementTraverser<VariableDeclaration> = (
     }
 
     const variableValue = scopeManager.getVariableValue(variableName);
-    controlFlow.extendFlowState(variableName, variableValue);
 
     console.log(scopeManager.getState());
   }
 };
 
+const traverseFunctionParam = (
+  param: Identifier | Pattern | RestElement,
+  scopeManager: ScopeManager
+) => {
+  if (isIdentifier(param)) {
+    scopeManager.declareVariable(param.name, undefined);
+  } else if (isAssignmentPattern(param)) {
+    if (
+      isArrayPattern(param.left) ||
+      isObjectPattern(param.left) ||
+      isIdentifier(param.left)
+    ) {
+      traverseFunctionParam(param.left, scopeManager);
+    } else {
+      const error = `unknown function param type "${param.type}"`;
+      throw new Error(error);
+    }
+  } else if (isRestElement(param)) {
+    if (
+      isArrayPattern(param.argument) ||
+      isObjectPattern(param.argument) ||
+      isIdentifier(param.argument)
+    ) {
+      traverseFunctionParam(param.argument, scopeManager);
+    } else {
+      const error = `unknown function param type "${param.type}"`;
+      throw new Error(error);
+    }
+  }
+};
+
+const traverseReturnStatement: StatementTraverser<ReturnStatement> = (
+  stmt,
+  scopeManager
+) => {
+  if (stmt.argument) {
+    getExpressionValue(stmt.argument, scopeManager);
+  }
+};
+
 const traverseIfStatement: StatementTraverser<IfStatement> = (
   stmt,
-  scopeManager,
-  controlFlow
+  scopeManager
 ) => {
   const testResult = Boolean(getExpressionValue(stmt.test, scopeManager)); // тут начинается control flow
   const beforeConsequentState = scopeManager.getSnaphot();
 
-  traverseStatement(stmt.consequent, scopeManager, controlFlow);
+  traverseStatement(stmt.consequent, scopeManager);
 
   if (stmt.alternate) {
-    traverseStatement(stmt.alternate, scopeManager, controlFlow);
+    traverseStatement(stmt.alternate, scopeManager);
   }
 };
 
 const traverseForStatement: StatementTraverser<ForStatement> = (
   stmt,
-  scopeManager,
-  controlFlow
+  scopeManager
 ) => {
   if (stmt.init?.type === 'VariableDeclaration') {
-    traverseVariableDeclaration(stmt.init, scopeManager, controlFlow);
+    traverseVariableDeclaration(stmt.init, scopeManager);
     const variableName = stmt.init;
   } else if (stmt.init) {
     const initValue = getExpressionValue(stmt.init, scopeManager);
@@ -151,16 +199,15 @@ const traverseForStatement: StatementTraverser<ForStatement> = (
     ? getExpressionValue(stmt.update, scopeManager)
     : null;
 
-  traverseStatement(stmt.body, scopeManager, controlFlow);
+  traverseStatement(stmt.body, scopeManager);
 };
 
 const traverseWhileStatement: StatementTraverser<WhileStatement> = (
   stmt,
-  scopeManager,
-  controlFlow
+  scopeManager
 ) => {
   const testResult = getExpressionValue(stmt.test, scopeManager);
-  traverseStatement(stmt.body, scopeManager, controlFlow);
+  traverseStatement(stmt.body, scopeManager);
 };
 
 const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
@@ -183,6 +230,18 @@ const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
       return getTernaryExpressionValue(e, scopeManager);
     case 'CallExpression':
       return getCallExpressionValue(e, scopeManager);
+    case 'LogicalExpression':
+      return getLogicalExpressionValue(e, scopeManager);
+    case 'ParenthesizedExpression':
+      return getExpressionValue(e.expression, scopeManager);
+    case 'SequenceExpression':
+      return handleSequenceExpression(e, scopeManager);
+    case 'ArrayExpression':
+      return handleArrayExpression(e, scopeManager);
+    case 'FunctionExpression':
+      return handleFunctionExpression(e, scopeManager);
+    case 'ArrowFunctionExpression':
+      return handleArrowFunctionExpression(e, scopeManager);
     case 'Identifier':
       return scopeManager.getVariableValue(e.name);
     default:
@@ -330,4 +389,53 @@ const getTernaryExpressionValue = (
   getExpressionValue(expr.test, scopeManager);
   getExpressionValue(expr.consequent, scopeManager);
   getExpressionValue(expr.alternate, scopeManager);
+  return undefined;
+};
+
+const getLogicalExpressionValue = (
+  expr: LogicalExpression,
+  scopeManager: ScopeManager
+) => {
+  getExpressionValue(expr.left, scopeManager);
+  getExpressionValue(expr.right, scopeManager);
+  return undefined;
+};
+
+const handleSequenceExpression = (
+  expr: SequenceExpression,
+  scopeManager: ScopeManager
+) => {
+  expr.expressions.forEach((expr) => getExpressionValue(expr, scopeManager));
+  return undefined;
+};
+
+const handleArrayExpression = (
+  expr: ArrayExpression,
+  scopeManager: ScopeManager
+) => {
+  return expr.elements.map((elem) => {
+    if (!isExpression(elem)) {
+      throw new Error('Expected Expression as an element of ArrayExpression');
+    }
+
+    return getExpressionValue(elem, scopeManager);
+  });
+};
+
+const handleArrowFunctionExpression = (
+  expr: ArrowFunctionExpression,
+  scopeManager: ScopeManager
+) => {
+  if (isExpression(expr.body)) {
+    getExpressionValue(expr.body, scopeManager);
+  } else {
+    traverseStatement(expr.body, scopeManager);
+  }
+};
+
+const handleFunctionExpression = (
+  expr: FunctionExpression,
+  scopeManager: ScopeManager
+) => {
+  traverseStatement(expr.body, scopeManager);
 };
