@@ -6,6 +6,7 @@ import {
   BlockStatement,
   CallExpression,
   ConditionalExpression,
+  DoWhileStatement,
   Expression,
   ForStatement,
   FunctionDeclaration,
@@ -19,6 +20,7 @@ import {
   ReturnStatement,
   SequenceExpression,
   Statement,
+  SwitchStatement,
   UpdateExpression,
   VariableDeclaration,
   WhileStatement,
@@ -28,6 +30,7 @@ import {
   isIdentifier,
   isObjectPattern,
   isRestElement,
+  isVariableDeclaration,
 } from '@babel/types';
 import fs from 'fs';
 import path from 'path';
@@ -43,9 +46,13 @@ export function getProgramText(fileName: string) {
 }
 
 export function traverseProgram(program: Program, scopeManager: ScopeManager) {
+  scopeManager.enterScope();
+
   for (const statement of program.body) {
     traverseStatement(statement, scopeManager);
   }
+
+  scopeManager.exitScope();
 }
 
 type StatementTraverser<S extends Statement = Statement> = (
@@ -56,22 +63,26 @@ type StatementTraverser<S extends Statement = Statement> = (
 const traverseStatement: StatementTraverser = (statement, scopeManager) => {
   switch (statement.type) {
     case 'FunctionDeclaration':
-      scopeManager.enterScope();
       traverseFunctionDeclaration(statement, scopeManager);
-      scopeManager.exitScope();
       break;
     case 'VariableDeclaration':
       traverseVariableDeclaration(statement, scopeManager);
       break;
     case 'IfStatement':
+      scopeManager.enterScope();
+      traverseIfStatement(statement, scopeManager);
+      scopeManager.exitScope();
       return;
+    case 'SwitchStatement':
+      traverseSwitchStatement(statement, scopeManager);
+      break;
     case 'BlockStatement':
       scopeManager.enterScope();
       traverseBlockStatement(statement, scopeManager);
       scopeManager.exitScope();
       break;
     case 'ExpressionStatement':
-      getExpressionValue(statement.expression, scopeManager);
+      handleExpressionValue(statement.expression, scopeManager, false);
       break;
     case 'ReturnStatement':
       traverseReturnStatement(statement, scopeManager);
@@ -81,6 +92,16 @@ const traverseStatement: StatementTraverser = (statement, scopeManager) => {
       traverseForStatement(statement, scopeManager);
       scopeManager.exitScope();
       break;
+    case 'WhileStatement':
+      scopeManager.enterScope();
+      traverseWhileStatement(statement, scopeManager);
+      scopeManager.exitScope();
+      break
+    case 'DoWhileStatement':
+      scopeManager.enterScope();
+      traverseDoWhileStatement(statement, scopeManager);
+      scopeManager.exitScope();
+      break
     default:
       const error = `Unknown statement type: ${statement.type}`;
       throw new Error(error);
@@ -91,41 +112,15 @@ const traverseFunctionDeclaration: StatementTraverser<FunctionDeclaration> = (
   stmt,
   scopeManager
 ) => {
-  traverseBlockStatement(stmt.body, scopeManager);
+  if (stmt.id) {
+    scopeManager.declareVariable(stmt.id?.name, stmt.id?.loc);
+  }
+  scopeManager.enterScope();
+
   stmt.params.forEach((param) => traverseFunctionParam(param, scopeManager));
-};
+  traverseStatement(stmt.body, scopeManager);
 
-const traverseBlockStatement: StatementTraverser<BlockStatement> = (
-  statement,
-  scopeManager
-) => {
-  for (const node of statement.body) {
-    traverseStatement(node, scopeManager);
-  }
-};
-
-const traverseVariableDeclaration: StatementTraverser<VariableDeclaration> = (
-  stmt,
-  scopeManager
-) => {
-  for (const variableDeclarator of stmt.declarations) {
-    if (variableDeclarator.id.type !== 'Identifier') {
-      throw new Error('Non-Identifier found in variable declarator');
-    }
-
-    const variableName = variableDeclarator.id.name;
-    scopeManager.declareVariable(variableName, undefined);
-    if (variableDeclarator.init) {
-      scopeManager.assignVariable(
-        variableName,
-        getExpressionValue(variableDeclarator.init, scopeManager)
-      );
-    }
-
-    const variableValue = scopeManager.getVariableValue(variableName);
-
-    console.log(scopeManager.getState());
-  }
+  scopeManager.exitScope();
 };
 
 const traverseFunctionParam = (
@@ -133,7 +128,7 @@ const traverseFunctionParam = (
   scopeManager: ScopeManager
 ) => {
   if (isIdentifier(param)) {
-    scopeManager.declareVariable(param.name, undefined);
+    scopeManager.declareVariable(param.name, param.loc);
   } else if (isAssignmentPattern(param)) {
     if (
       isArrayPattern(param.left) ||
@@ -159,12 +154,38 @@ const traverseFunctionParam = (
   }
 };
 
+const traverseBlockStatement: StatementTraverser<BlockStatement> = (
+  statement,
+  scopeManager
+) => {
+  for (const node of statement.body) {
+    traverseStatement(node, scopeManager);
+  }
+};
+
+const traverseVariableDeclaration: StatementTraverser<VariableDeclaration> = (
+  stmt,
+  scopeManager
+) => {
+  for (const variableDeclarator of stmt.declarations) {
+    if (variableDeclarator.id.type !== 'Identifier') {
+      throw new Error('Non-Identifier found in variable declarator');
+    }
+
+    const variableName = variableDeclarator.id.name;
+    scopeManager.declareVariable(variableName, stmt.loc);
+    if (variableDeclarator.init) {
+      handleExpressionValue(variableDeclarator.init, scopeManager, true);
+    }
+  }
+};
+
 const traverseReturnStatement: StatementTraverser<ReturnStatement> = (
   stmt,
   scopeManager
 ) => {
   if (stmt.argument) {
-    getExpressionValue(stmt.argument, scopeManager);
+    handleExpressionValue(stmt.argument, scopeManager, true);
   }
 };
 
@@ -172,9 +193,7 @@ const traverseIfStatement: StatementTraverser<IfStatement> = (
   stmt,
   scopeManager
 ) => {
-  const testResult = Boolean(getExpressionValue(stmt.test, scopeManager)); // тут начинается control flow
-  const beforeConsequentState = scopeManager.getSnaphot();
-
+  handleExpressionValue(stmt.test, scopeManager, true);
   traverseStatement(stmt.consequent, scopeManager);
 
   if (stmt.alternate) {
@@ -182,22 +201,41 @@ const traverseIfStatement: StatementTraverser<IfStatement> = (
   }
 };
 
+const traverseSwitchStatement: StatementTraverser<SwitchStatement> = (
+  stmt,
+  scopeManager
+) => {
+  handleExpressionValue(stmt.discriminant, scopeManager, true);
+  stmt.cases.forEach((switchCase) => {
+    if (switchCase.test) {
+      handleExpressionValue(switchCase.test, scopeManager, true);
+    }
+
+    scopeManager.enterScope();
+
+    switchCase.consequent.forEach((stmt) =>
+      traverseStatement(stmt, scopeManager)
+    );
+
+    scopeManager.exitScope();
+  });
+};
+
 const traverseForStatement: StatementTraverser<ForStatement> = (
   stmt,
   scopeManager
 ) => {
-  if (stmt.init?.type === 'VariableDeclaration') {
+  if (isVariableDeclaration(stmt.init)) {
     traverseVariableDeclaration(stmt.init, scopeManager);
-    const variableName = stmt.init;
-  } else if (stmt.init) {
-    const initValue = getExpressionValue(stmt.init, scopeManager);
   }
-  let testResult = stmt.test
-    ? getExpressionValue(stmt.test, scopeManager)
-    : null;
-  let updateResult = stmt.update
-    ? getExpressionValue(stmt.update, scopeManager)
-    : null;
+
+  if (stmt.test) {
+    handleExpressionValue(stmt.test, scopeManager, true);
+  }
+
+  if (stmt.update) {
+    handleExpressionValue(stmt.update, scopeManager, false);
+  }
 
   traverseStatement(stmt.body, scopeManager);
 };
@@ -206,11 +244,23 @@ const traverseWhileStatement: StatementTraverser<WhileStatement> = (
   stmt,
   scopeManager
 ) => {
-  const testResult = getExpressionValue(stmt.test, scopeManager);
+  handleExpressionValue(stmt.test, scopeManager, true);
   traverseStatement(stmt.body, scopeManager);
 };
 
-const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
+const traverseDoWhileStatement: StatementTraverser<DoWhileStatement> = (
+  stmt,
+  scopeManager
+) => {
+  traverseStatement(stmt.body, scopeManager);
+  handleExpressionValue(stmt.test, scopeManager, true);
+};
+
+const handleExpressionValue = (
+  e: Expression,
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
+): any => {
   switch (e.type) {
     case 'NumericLiteral':
       return e.value;
@@ -221,28 +271,29 @@ const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
     case 'NullLiteral':
       return null;
     case 'BinaryExpression':
-      return getBinaryExpressionValue(e, scopeManager);
+      return getBinaryExpressionValue(e, scopeManager, canBeUsed);
     case 'AssignmentExpression':
-      return handleAssignmentExpression(e, scopeManager);
+      return handleAssignmentExpression(e, scopeManager, canBeUsed);
     case 'UpdateExpression':
-      return getUpdateExpressionValue(e, scopeManager);
+      return getUpdateExpressionValue(e, scopeManager, canBeUsed);
     case 'ConditionalExpression':
-      return getTernaryExpressionValue(e, scopeManager);
+      return getTernaryExpressionValue(e, scopeManager, canBeUsed);
     case 'CallExpression':
-      return getCallExpressionValue(e, scopeManager);
+      return getCallExpressionValue(e, scopeManager, canBeUsed);
     case 'LogicalExpression':
-      return getLogicalExpressionValue(e, scopeManager);
+      return getLogicalExpressionValue(e, scopeManager, canBeUsed);
     case 'ParenthesizedExpression':
-      return getExpressionValue(e.expression, scopeManager);
+      return handleExpressionValue(e.expression, scopeManager, canBeUsed);
     case 'SequenceExpression':
-      return handleSequenceExpression(e, scopeManager);
+      return handleSequenceExpression(e, scopeManager, canBeUsed);
     case 'ArrayExpression':
-      return handleArrayExpression(e, scopeManager);
+      return handleArrayExpression(e, scopeManager, canBeUsed);
     case 'FunctionExpression':
       return handleFunctionExpression(e, scopeManager);
     case 'ArrowFunctionExpression':
-      return handleArrowFunctionExpression(e, scopeManager);
+      return handleArrowFunctionExpression(e, scopeManager, canBeUsed);
     case 'Identifier':
+      if (canBeUsed) scopeManager.setIsUsed(e.name);
       return scopeManager.getVariableValue(e.name);
     default:
       const error = `unknown expression type: ${e.type}`;
@@ -252,182 +303,175 @@ const getExpressionValue = (e: Expression, scopeManager: ScopeManager): any => {
 
 const getBinaryExpressionValue = (
   expr: BinaryExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
   if (expr.left.type === 'PrivateName') {
     throw new Error(
       'Type of left operand in binary expression in "PrivateName"'
     );
   }
-  const leftOperandValue = getExpressionValue(expr.left, scopeManager);
-  const rightOperandValue = getExpressionValue(expr.right, scopeManager);
+  handleExpressionValue(expr.left, scopeManager, canBeUsed);
+  handleExpressionValue(expr.right, scopeManager, canBeUsed);
   switch (expr.operator) {
     case '!=':
-      return leftOperandValue != rightOperandValue;
+      // return leftOperandValue != rightOperandValue;
+      break;
     case '%':
-      return leftOperandValue % rightOperandValue;
+      // return leftOperandValue % rightOperandValue;
+      break;
     case '+':
-      return leftOperandValue + rightOperandValue;
+      // return leftOperandValue + rightOperandValue;
+      break;
     case '-':
-      return leftOperandValue - rightOperandValue;
+      // return leftOperandValue - rightOperandValue;
+      break;
     case '*':
-      return leftOperandValue * rightOperandValue;
+      // return leftOperandValue * rightOperandValue;
+      break;
     case '/':
-      return leftOperandValue / rightOperandValue;
+      // return leftOperandValue / rightOperandValue;
+      break;
     case '==':
-      return leftOperandValue == rightOperandValue;
+      // return leftOperandValue == rightOperandValue;
+      break;
     case '>':
-      return leftOperandValue > rightOperandValue;
+      // return leftOperandValue > rightOperandValue;
+      break;
     case '>=':
-      return leftOperandValue >= rightOperandValue;
+      // return leftOperandValue >= rightOperandValue;
+      break;
     case '<':
-      return leftOperandValue < rightOperandValue;
+      // return leftOperandValue < rightOperandValue;
+      break;
     case '<=':
-      return leftOperandValue <= rightOperandValue;
+      // return leftOperandValue <= rightOperandValue;
+      break;
   }
 };
 
-enum AssignmentOperator {
-  '=',
-  '+=',
-  '-=',
-  '*=',
-  '/=',
-  '%=',
-  '**=',
-  '<<=',
-  '>>=',
-  '>>>=',
-  ',=',
-  '^=',
-  '&=',
-  '||=',
-  '&&=',
-  '??=',
-}
-
 const handleAssignmentExpression = (
   expr: AssignmentExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
   if (expr.left.type !== 'Identifier') {
     const error = `unknown type in assignmet expression: ${expr.left.type}`;
     throw new Error(error);
   }
 
-  const leftOperandValue = getExpressionValue(expr.left, scopeManager);
-  const rightOperandValue = getExpressionValue(expr.right, scopeManager);
+  handleExpressionValue(expr.left, scopeManager, canBeUsed);
+  handleExpressionValue(expr.right, scopeManager, true);
+
   switch (expr.operator) {
     case '=':
-      scopeManager.assignVariable(expr.left.name, rightOperandValue);
-      return rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      break;
     case '+=':
-      const result = leftOperandValue + rightOperandValue;
-      scopeManager.assignVariable(expr.left.name, result);
-      return result;
+      // const result = leftOperandValue + rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      // return result;
+      break;
     case '-=':
-      const result1 = leftOperandValue - rightOperandValue;
-      scopeManager.assignVariable(expr.left.name, result1);
-      return result1;
+      // const result1 = leftOperandValue - rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      break;
     case '*=':
-      const result2 = leftOperandValue * rightOperandValue;
-      scopeManager.assignVariable(expr.left.name, result2);
-      return result2;
+      // const result2 = leftOperandValue * rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      break;
     case '%=':
-      const result3 = leftOperandValue % rightOperandValue;
-      scopeManager.assignVariable(expr.left.name, result3);
-      return result3;
+      // const result3 = leftOperandValue % rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      break;
     case '/=':
-      const result4 = leftOperandValue / rightOperandValue;
-      scopeManager.assignVariable(expr.left.name, result4);
-      return result4;
+      // const result4 = leftOperandValue / rightOperandValue;
+      // scopeManager.assignVariable(expr.left.name);
+      break;
   }
 };
 
 const getUpdateExpressionValue = (
   expr: UpdateExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
-  const argumentValue = getExpressionValue(expr.argument, scopeManager);
-  const identifierName =
-    expr.argument.type === 'Identifier' ? expr.argument.name : null;
-  const newValue =
-    expr.operator === '++' ? argumentValue + 1 : argumentValue - 1;
-
-  if (identifierName) {
-    scopeManager.assignVariable(identifierName, newValue);
-  }
-
-  return expr.prefix ? newValue : argumentValue;
+  handleExpressionValue(expr.argument, scopeManager, canBeUsed);
 };
 
 const getCallExpressionValue = (
   expr: CallExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
   if (!isExpression(expr.callee)) {
     throw new Error('CallExpression callee is not an expression');
   }
 
-  getExpressionValue(expr.callee, scopeManager);
+  handleExpressionValue(expr.callee, scopeManager, canBeUsed);
 
   expr.arguments.forEach((arg) => {
     if (!isExpression(arg)) {
       throw new Error('CallExpression argument is not an expression!');
     }
 
-    getExpressionValue(arg, scopeManager);
+    handleExpressionValue(arg, scopeManager, canBeUsed);
   });
-
-  return undefined;
 };
 
 const getTernaryExpressionValue = (
   expr: ConditionalExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
-  getExpressionValue(expr.test, scopeManager);
-  getExpressionValue(expr.consequent, scopeManager);
-  getExpressionValue(expr.alternate, scopeManager);
+  handleExpressionValue(expr.test, scopeManager, canBeUsed);
+  handleExpressionValue(expr.consequent, scopeManager, canBeUsed);
+  handleExpressionValue(expr.alternate, scopeManager, canBeUsed);
   return undefined;
 };
 
 const getLogicalExpressionValue = (
   expr: LogicalExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
-  getExpressionValue(expr.left, scopeManager);
-  getExpressionValue(expr.right, scopeManager);
+  handleExpressionValue(expr.left, scopeManager, canBeUsed);
+  handleExpressionValue(expr.right, scopeManager, canBeUsed);
   return undefined;
 };
 
 const handleSequenceExpression = (
   expr: SequenceExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
-  expr.expressions.forEach((expr) => getExpressionValue(expr, scopeManager));
+  expr.expressions.forEach((expr) =>
+    handleExpressionValue(expr, scopeManager, canBeUsed)
+  );
   return undefined;
 };
 
 const handleArrayExpression = (
   expr: ArrayExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
   return expr.elements.map((elem) => {
     if (!isExpression(elem)) {
       throw new Error('Expected Expression as an element of ArrayExpression');
     }
 
-    return getExpressionValue(elem, scopeManager);
+    return handleExpressionValue(elem, scopeManager, canBeUsed);
   });
 };
 
 const handleArrowFunctionExpression = (
   expr: ArrowFunctionExpression,
-  scopeManager: ScopeManager
+  scopeManager: ScopeManager,
+  canBeUsed: boolean
 ) => {
   if (isExpression(expr.body)) {
-    getExpressionValue(expr.body, scopeManager);
+    handleExpressionValue(expr.body, scopeManager, canBeUsed);
   } else {
     traverseStatement(expr.body, scopeManager);
   }

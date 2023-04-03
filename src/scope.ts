@@ -1,8 +1,11 @@
-import ControlFlow from './controlFlow';
+import { SourceLocation } from '@babel/types';
 import cloneDeep from 'lodash/cloneDeep';
 
 export type ScopeData = {
-  variables: Record<string, unknown>;
+  variables: Record<string, {
+    isUsed: boolean
+    lineNumber?: number
+  }>;
   childScope: ScopeData | null;
   parentScope: ScopeData | null;
 };
@@ -16,11 +19,14 @@ const emptyScope = (parentScope?: ScopeData) => ({
 class ScopeManager {
   data: ScopeData = emptyScope();
 
-  declareVariable(name: string, value: any) {
-    this.data.variables[name] = value;
+  declareVariable(name: string, location: SourceLocation | null | undefined) {
+    this.data.variables[name] = {
+      isUsed: false,
+      lineNumber: location?.start.line
+    }
   }
 
-  assignVariable(name: string, value: any) {
+  assignVariable(name: string) {
     while (!this.data.variables.hasOwnProperty(name) && this.data.parentScope) {
       this.data = this.data.parentScope;
     }
@@ -30,7 +36,7 @@ class ScopeManager {
       throw new Error(error);
     }
 
-    this.data.variables[name] = value;
+    this.data.variables[name].isUsed = true;
 
     while (this.data.childScope) this.data = this.data.childScope;
   }
@@ -52,9 +58,7 @@ class ScopeManager {
   }
 
   enterScope() {
-    if (this.data.childScope === null) {
-      this.data.childScope = emptyScope(this.data);
-    }
+    this.data.childScope = emptyScope(this.data);
 
     this.data = this.data.childScope;
   }
@@ -63,6 +67,8 @@ class ScopeManager {
     if (this.data.parentScope === null) {
       throw new Error('No available parent scope');
     }
+
+    this.checkLastScope()
 
     this.data = this.data.parentScope;
     this.data.childScope = null;
@@ -73,7 +79,7 @@ class ScopeManager {
     const result = [] as any[];
 
     while (currentScope) {
-      result.unshift({ ...currentScope.variables });
+      result.unshift(cloneDeep(currentScope.variables));
       currentScope = currentScope.parentScope;
     }
 
@@ -84,7 +90,7 @@ class ScopeManager {
     let currentScope: ScopeData | null = this.data;
     while (currentScope) {
       if (currentScope.variables.hasOwnProperty(identifier)) {
-        // set is used
+        currentScope.variables[identifier].isUsed = true
         return;
       }
       currentScope = currentScope.parentScope;
@@ -94,18 +100,13 @@ class ScopeManager {
     throw new Error(error);
   }
 
-  /**
-   * @returns копия всего скопа с указателем на последний
-   */
-  getSnaphot() {
-    return cloneDeep(this.data);
-  }
-
-  /**
-   * @param newScope - новый скоуп с указателем на последний
-   */
-  applySnapshot(newScope: ScopeData) {
-    this.data = newScope;
+  checkLastScope() {
+    Object.entries(this.data.variables).forEach(([identifier, {isUsed, lineNumber}]) => {
+      if (!isUsed) {
+        const info = (lineNumber ? `Line ${lineNumber}: ` : '') + `variable "${identifier}" is defined but is not used in any expression`
+        console.log(info)
+      }
+    })
   }
 }
 
