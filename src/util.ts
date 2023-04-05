@@ -299,7 +299,10 @@ const handleExpressionValue = (
       scopeManager.exitScope();
       break;
     case 'Identifier':
-      scopeManager.setIsUsed(e.name, canBeUsed);
+      const isUsed = scopeManager.getVariableValue(e.name).isUsed;
+      if (!isUsed) {
+        scopeManager.setIsUsed(e.name, canBeUsed);
+      }
       return scopeManager.getVariableValue(e.name);
     default:
       const error = `unknown expression type: ${e.type}`;
@@ -317,43 +320,9 @@ const getBinaryExpressionValue = (
       'Type of left operand in binary expression in "PrivateName"'
     );
   }
+
   handleExpressionValue(expr.left, scopeManager, canBeUsed);
   handleExpressionValue(expr.right, scopeManager, canBeUsed);
-  switch (expr.operator) {
-    case '!=':
-      // return leftOperandValue != rightOperandValue;
-      break;
-    case '%':
-      // return leftOperandValue % rightOperandValue;
-      break;
-    case '+':
-      // return leftOperandValue + rightOperandValue;
-      break;
-    case '-':
-      // return leftOperandValue - rightOperandValue;
-      break;
-    case '*':
-      // return leftOperandValue * rightOperandValue;
-      break;
-    case '/':
-      // return leftOperandValue / rightOperandValue;
-      break;
-    case '==':
-      // return leftOperandValue == rightOperandValue;
-      break;
-    case '>':
-      // return leftOperandValue > rightOperandValue;
-      break;
-    case '>=':
-      // return leftOperandValue >= rightOperandValue;
-      break;
-    case '<':
-      // return leftOperandValue < rightOperandValue;
-      break;
-    case '<=':
-      // return leftOperandValue <= rightOperandValue;
-      break;
-  }
 };
 
 const handleAssignmentExpression = (
@@ -366,25 +335,12 @@ const handleAssignmentExpression = (
     throw new Error(error);
   }
 
-  const identifierWasUsed = scopeManager.getVariableValue(expr.left.name);
-  handleExpressionValue(expr.right, scopeManager, true);
-  if (!identifierWasUsed)
-    handleExpressionValue(expr.left, scopeManager, canBeUsed);
+  const isUsed = scopeManager.getVariableValue(expr.left.name).isUsed
 
-  switch (expr.operator) {
-    case '=':
-      break;
-    case '+=':
-      break;
-    case '-=':
-      break;
-    case '*=':
-      break;
-    case '%=':
-      break;
-    case '/=':
-      break;
-  }
+  handleExpressionValue(expr.right, scopeManager, true);
+  handleExpressionValue(expr.left, scopeManager, isUsed);
+
+  scopeManager.setIsUsed(expr.left.name, isUsed)
 };
 
 const getUpdateExpressionValue = (

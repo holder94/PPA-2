@@ -8,11 +8,10 @@ const ast = parser.parse(programText, {
   createParenthesizedExpressions: true,
 });
 
-for (const node of ast.program.body) {
-  console.dir(node, { depth: 8 });
-}
+// for (const node of ast.program.body) {
+//   console.dir(node, { depth: 8 });
+// }
 
 const scopeManager = new ScopeManager();
 
 traverseProgram(ast.program, scopeManager);
-
