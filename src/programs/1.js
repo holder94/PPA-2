@@ -17,5 +17,7 @@ function foo(first, second = 4, ...rest) {
 
   a++
   const array = [] 
-  return rest
+  return a + c
 }
+
+foo(a)

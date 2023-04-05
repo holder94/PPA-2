@@ -360,14 +360,14 @@ const getCallExpressionValue = (
     throw new Error('CallExpression callee is not an expression');
   }
 
-  handleExpressionValue(expr.callee, scopeManager, canBeUsed);
+  handleExpressionValue(expr.callee, scopeManager, true);
 
   expr.arguments.forEach((arg) => {
     if (!isExpression(arg)) {
       throw new Error('CallExpression argument is not an expression!');
     }
 
-    handleExpressionValue(arg, scopeManager, canBeUsed);
+    handleExpressionValue(arg, scopeManager, true);
   });
 };
 
