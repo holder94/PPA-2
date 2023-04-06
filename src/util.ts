@@ -279,7 +279,7 @@ const handleExpressionValue = (
     case 'ConditionalExpression':
       return getTernaryExpressionValue(e, scopeManager, canBeUsed);
     case 'CallExpression':
-      return getCallExpressionValue(e, scopeManager, canBeUsed);
+      return getCallExpressionValue(e, scopeManager);
     case 'LogicalExpression':
       return getLogicalExpressionValue(e, scopeManager, canBeUsed);
     case 'ParenthesizedExpression':
@@ -354,7 +354,6 @@ const getUpdateExpressionValue = (
 const getCallExpressionValue = (
   expr: CallExpression,
   scopeManager: ScopeManager,
-  canBeUsed: boolean
 ) => {
   if (!isExpression(expr.callee)) {
     throw new Error('CallExpression callee is not an expression');

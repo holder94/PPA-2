@@ -15,3 +15,5 @@ const ast = parser.parse(programText, {
 const scopeManager = new ScopeManager();
 
 traverseProgram(ast.program, scopeManager);
+
+scopeManager.printInfo()

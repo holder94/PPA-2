@@ -2,10 +2,13 @@ import { SourceLocation } from '@babel/types';
 import cloneDeep from 'lodash/cloneDeep';
 
 export type ScopeData = {
-  variables: Record<string, {
-    isUsed: boolean
-    lineNumber?: number
-  }>;
+  variables: Record<
+    string,
+    {
+      isUsed: boolean;
+      lineNumber?: number;
+    }
+  >;
   childScope: ScopeData | null;
   parentScope: ScopeData | null;
 };
@@ -18,12 +21,13 @@ const emptyScope = (parentScope?: ScopeData) => ({
 
 class ScopeManager {
   data: ScopeData = emptyScope();
+  result: Array<{ identifier: string; lineNumber?: number }> = [];
 
   declareVariable(name: string, location: SourceLocation | null | undefined) {
     this.data.variables[name] = {
       isUsed: false,
-      lineNumber: location?.start.line
-    }
+      lineNumber: location?.start.line,
+    };
   }
 
   getVariableValue(variableName: string) {
@@ -53,7 +57,7 @@ class ScopeManager {
       throw new Error('No available parent scope');
     }
 
-    this.checkLastScope()
+    this.checkLastScope();
 
     this.data = this.data.parentScope;
     this.data.childScope = null;
@@ -75,7 +79,7 @@ class ScopeManager {
     let currentScope: ScopeData | null = this.data;
     while (currentScope) {
       if (currentScope.variables.hasOwnProperty(identifier)) {
-        currentScope.variables[identifier].isUsed = usedValue
+        currentScope.variables[identifier].isUsed = usedValue;
         return;
       }
       currentScope = currentScope.parentScope;
@@ -86,13 +90,28 @@ class ScopeManager {
   }
 
   checkLastScope() {
-    Object.entries(this.data.variables).forEach(([identifier, {isUsed, lineNumber}]) => {
-      if (!isUsed) {
-        const info = (lineNumber ? `Line ${lineNumber}: ` : '') + `variable "${identifier}" has a value but is not used in any expression`
-        console.log(info)
-      }
-    })
+    Object.entries(this.data.variables)
+      .map(([identifier, { isUsed, lineNumber }]) =>
+        !isUsed ? { identifier, lineNumber } : null
+      )
+      .filter(isNotNull)
+      .forEach((data) => this.result.push({ ...data }));
   }
+
+  printInfo() {
+    this.result
+      .sort((a, b) => (a.lineNumber || Infinity) - (b.lineNumber || Infinity))
+      .forEach(({ identifier, lineNumber }) => {
+        const info =
+          (lineNumber ? `Line ${lineNumber}: ` : '') +
+          `variable "${identifier}" has a value but is not used in any expression`;
+        console.log(info);
+      });
+  }
+}
+
+function isNotNull<T>(arg: T): arg is Exclude<T, null> {
+  return arg !== null
 }
 
 export default ScopeManager;
