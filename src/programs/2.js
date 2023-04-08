@@ -1,20 +1,36 @@
-function stock(bookId) {
-  switch(bookId) {
-    case 1:
-      return 50
-    case 2:
-      return 1000
-    default:
-      return 200
+function foo() {
+  let a = 1
+  let b = 2
+  
+  // if (b > 0) {
+  //   a = 2
+  // } else if (a === 3) {
+  //   a += 3
+  //   return a
+  // }
+
+  while(true) {
+    a = 2
+    // return a
   }
 }
 
-function price(bookId) {
-  let p = 14;
-  if (stock(bookId) < 100) {
-    p = 19;
-  } else if (stock(bookId) > 1000) {
-    p = 9;
-  }
-  return p;
-}
+
+// function bar() {
+//   let a = 1
+//   let b = 3
+
+//   if (a > 0) {
+//     a = 2
+//     if (b > 1) {
+//       a = 3
+//       return a
+//     }
+
+//     if (b > 2) {
+//       b = 3
+//     }
+
+//     return a
+//   }
+// }
